@@ -1,0 +1,21 @@
+name: Factory feature
+description: Describe a feature for the factory to spec, build and review
+title: "[feature] "
+body:
+  - type: textarea
+    id: feature
+    attributes:
+      label: What should it do?
+      description: Say what the user sees or can do. One feature per issue.
+    validations:
+      required: true
+  - type: textarea
+    id: done
+    attributes:
+      label: How will we know it works?
+      description: Optional. Things to check, pages to look at, cases that must work.
+  - type: textarea
+    id: out
+    attributes:
+      label: Out of scope
+      description: Optional. Anything the factory should leave alone.

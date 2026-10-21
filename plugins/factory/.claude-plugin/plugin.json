@@ -1,0 +1,7 @@
+{
+  "name": "factory",
+  "version": "1.0.0",
+  "description": "Software factory: spec-writer, builder, four reviewers and an approver, run per job in its own git worktree",
+  "author": { "name": "MOYO" },
+  "keywords": ["workflow", "agents", "review"]
+}

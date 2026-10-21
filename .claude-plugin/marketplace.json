@@ -1,0 +1,7 @@
+{
+  "name": "claude-factory",
+  "owner": { "name": "MOYO" },
+  "plugins": [
+    { "name": "factory", "source": "./plugins/factory", "description": "Spec, build, review and approve loop run by Claude Code agents" }
+  ]
+}
