@@ -308,7 +308,12 @@ before you finish: the branch, the PR, and issue comments.
    - `APPROVE` → **Publish** with `ready`.
    - `ESCALATE`, build `BLOCKED`, or rounds exhausted → **Publish** with `human`.
    Skip **Merge** entirely.
-5. **Board.** At each transition, besides the Reporting line, comment on the
+5. **Labels.** The issue's state is also a label, so it needs no project
+   token: `factory:working`, `factory:review`, `factory:needs-human`. Create
+   each once with `gh label create <name> --force`, and at each transition
+   remove the other two and add the current one (`gh issue edit <n>
+   --add-label ... --remove-label ...`). This always runs.
+6. **Board.** At each transition, besides the Reporting line, comment on the
    issue (review round done, publish, needs-human) and, if `factory/config.json`
    has a `board` and `FACTORY_BOARD_TOKEN` is set, move the card as in
    `/factory poll` step 5 using `GH_TOKEN=$FACTORY_BOARD_TOKEN` for the
