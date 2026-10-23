@@ -1,0 +1,21 @@
+# Runs the factory when an issue is labelled `factory`, handles
+# `/factory rework <note>` comments, and marks merged factory PRs done.
+# Secrets: CLAUDE_CODE_OAUTH_TOKEN (required), FACTORY_BOARD_TOKEN (optional, moves the board card).
+name: factory
+on:
+  issues:
+    types: [labeled]
+  issue_comment:
+    types: [created]
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  factory:
+    uses: dylanpughMOYO/claude-factory/.github/workflows/factory-run.yml@main
+    secrets: inherit

@@ -1,0 +1,106 @@
+# Reusable factory workflow. Client repos call it from a short caller workflow
+# (see plugins/factory/templates/github/workflows/factory.yml).
+name: factory-run
+
+on:
+  workflow_call:
+    secrets:
+      CLAUDE_CODE_OAUTH_TOKEN:
+        required: true
+      FACTORY_BOARD_TOKEN:
+        required: false
+
+env:
+  BOARD_SCRIPT_URL: https://raw.githubusercontent.com/dylanpughMOYO/claude-factory/main/.github/scripts/board-status.sh
+
+jobs:
+  run:
+    if: >-
+      (github.event_name == 'issues' && github.event.label.name == 'factory'
+        && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association))
+      || (github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/factory rework')
+        && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    concurrency:
+      group: factory-${{ github.event.issue.number }}
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      FACTORY_BOARD_TOKEN: ${{ secrets.FACTORY_BOARD_TOKEN }}
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      ISSUE: ${{ github.event.issue.number }}
+      COMMENT: ${{ github.event.comment.body }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-dotnet@v4
+        with: { global-json-file: global.json }
+      - run: npm install -g @anthropic-ai/claude-code
+      - name: Install factory plugin
+        run: |
+          claude plugin marketplace add dylanpughMOYO/claude-factory
+          claude plugin install factory@claude-factory
+      - name: Fetch board script
+        run: curl -fsSL "$BOARD_SCRIPT_URL" -o "$RUNNER_TEMP/board-status.sh"
+      - name: Board - In progress
+        if: always() && env.FACTORY_BOARD_TOKEN != ''
+        run: bash "$RUNNER_TEMP/board-status.sh" working
+      - name: Run factory
+        run: |
+          git config user.name "factory-bot"
+          git config user.email "factory-bot@users.noreply.github.com"
+          PROMPT="/factory:factory run $ISSUE"
+          if [ -n "$COMMENT" ]; then PROMPT="$PROMPT rework: ${COMMENT#/factory rework}"; fi
+          WT_ROOT="$(dirname "$PWD")/$(basename "$PWD")-factory"
+          mkdir -p "$WT_ROOT"
+          claude -p "$PROMPT" --permission-mode acceptEdits --max-turns 400 --add-dir "$WT_ROOT" --output-format json \
+            --allowedTools "Agent SendMessage Read Edit Write Glob Grep Bash(dotnet:*) Bash(git:*) Bash(gh:*) Bash(mkdir:*) Bash(cp:*) Bash(cat:*) Bash(ls:*) Bash(cd:*)" > "$RUNNER_TEMP/claude-out.json" || true
+          jq '{result: .result, denials: .permission_denials}' "$RUNNER_TEMP/claude-out.json" || cat "$RUNNER_TEMP/claude-out.json"
+      - name: Board - final status
+        if: always() && env.FACTORY_BOARD_TOKEN != ''
+        run: |
+          LABELS=$(gh issue view "$ISSUE" --json labels --jq '[.labels[].name]|join(",")')
+          case ",$LABELS," in
+            *,factory:review,*) bash "$RUNNER_TEMP/board-status.sh" review ;;
+            *)                  bash "$RUNNER_TEMP/board-status.sh" human ;;
+          esac
+      - name: Upload job folder
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: factory-job-${{ github.event.issue.number }}
+          path: |
+            factory-artifacts/
+            factory/jobs/
+          if-no-files-found: ignore
+
+  merged:
+    if: >-
+      github.event_name == 'pull_request' && github.event.pull_request.merged == true
+      && startsWith(github.event.pull_request.head.ref, 'factory/issue-')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      FACTORY_BOARD_TOKEN: ${{ secrets.FACTORY_BOARD_TOKEN }}
+      HEAD_REF: ${{ github.event.pull_request.head.ref }}
+      PR_URL: ${{ github.event.pull_request.html_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Mark done
+        run: |
+          ISSUE="${HEAD_REF#factory/issue-}"
+          export ISSUE
+          gh issue edit "$ISSUE" --remove-label factory:review --remove-label factory:needs-human --remove-label factory:working || true
+          gh issue comment "$ISSUE" --body "Merged in $PR_URL." || true
+          if [ -n "$FACTORY_BOARD_TOKEN" ]; then
+            curl -fsSL "$BOARD_SCRIPT_URL" -o "$RUNNER_TEMP/board-status.sh"
+            bash "$RUNNER_TEMP/board-status.sh" done
+          fi
