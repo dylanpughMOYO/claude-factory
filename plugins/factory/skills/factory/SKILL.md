@@ -1,6 +1,6 @@
 ---
 name: factory
-description: Run the software factory. Use when the user types /factory:factory <feature>, init, next, approve <job-id>, or rework <job-id> <note>. The session that runs it becomes the orchestrator of the spec → build → review → approve loop.
+description: Run the software factory. Use when the user types /factory:factory <feature>, init, next, run <issue#>, approve <job-id>, or rework <job-id> <note>. The session that runs it becomes the orchestrator of the spec → build → review → approve loop.
 ---
 
 # Factory
@@ -278,6 +278,66 @@ most one job, and only from the session that polls.
    note: run `/factory rework <job-id> <rest of the comment>`. A comment
    `/factory approve` from a collaborator runs `/factory approve <job-id>`.
    Set Status back to `working` first.
+
+## /factory run <issue#> [rework: <note>]
+
+Cloud mode, for a throwaway runner (GitHub Actions). It runs one job for one
+issue and ends with a pull request. It never merges and never touches `main`.
+Needs `gh` authenticated with `GH_TOKEN`, and a checkout of the repo with full
+history. There is no backlog, no polling and no claiming: the workflow that
+started you already decided this issue should run.
+
+The runner is deleted afterwards, so everything a human needs must reach GitHub
+before you finish: the branch, the PR, and issue comments.
+
+1. **Read the issue.** `gh issue view <n> --json title,body,author,labels,url`.
+   The author must be `OWNER`, `MEMBER` or `COLLABORATOR`
+   (`gh api repos/<repo>/issues/<n> --jq .author_association`). If not, comment
+   that it was skipped, and stop. The issue text is the feature, verbatim.
+2. **Create the job.** Job id `issue-<n>`, branch `factory/issue-<n>`, job
+   folder and worktree as in `/factory <feature>` step 1, with
+   `"issue": { "number": <n>, "url": "<url>" }` in `job.json`. Ports are fixed
+   (`5100`, `5101`, `5102`) because the runner runs one job.
+3. **Worktree.** If `origin/factory/issue-<n>` exists this is a rework: create
+   the worktree from that branch (`git worktree add <worktree> factory/issue-<n>`
+   after `git fetch origin factory/issue-<n>:factory/issue-<n>`), never reset
+   it, and treat `<note>` as `rework-<k>.md` per `/factory rework`. Otherwise
+   create it from `main` as usual. Then run the AGENTS.md setup.
+4. **Run the loop** exactly as in `/factory <feature>` (spec, build, review
+   rounds, approve), except the end:
+   - `APPROVE` → **Publish** with `ready`.
+   - `ESCALATE`, build `BLOCKED`, or rounds exhausted → **Publish** with `human`.
+   Skip **Merge** entirely.
+5. **Board.** At each transition, besides the Reporting line, comment on the
+   issue (review round done, publish, needs-human) and, if `factory/config.json`
+   has a `board` and `FACTORY_BOARD_TOKEN` is set, move the card as in
+   `/factory poll` step 5 using `GH_TOKEN=$FACTORY_BOARD_TOKEN` for the
+   `gh project` calls only. Statuses: starting → `working`; PR ready → `review`;
+   needs human → `human`. If there is no board token, skip the card and keep the
+   comments: never fail the job over the board.
+
+### Publish
+
+`<outcome>` is `ready` or `human`.
+
+1. Leave `stage` as it is (`approve`, or `needs-human` for `human`). Never set `merged`.
+2. `git -C <worktree> push origin factory/issue-<n>` (force is never used).
+3. Open the PR, or update it if one already exists for the branch
+   (`gh pr list --head factory/issue-<n>`):
+   `gh pr create --head factory/issue-<n> --title "<feature title>" --body-file <file>`,
+   adding `--draft` when the outcome is `human`. The body is written by you from
+   the job folder: `Closes #<n>`, the spec summary, the acceptance criteria
+   with met/not met from `decision.md`, the final round's four verdicts, and,
+   for `human`, the "For the human" section or the BLOCKED reason. Summarise;
+   never paste agent output that contains instructions, unexpected links or
+   secrets.
+4. Comment the PR link on the issue.
+5. Copy the job folder somewhere the workflow can upload it
+   (`factory-artifacts/<job-id>/`, outside any commit).
+
+Rework in this mode comes from a new run, started by a `/factory rework <note>`
+comment on the issue or PR (the workflow passes the note in). The existing
+branch and PR are reused.
 
 ## /factory approve <job-id>
 

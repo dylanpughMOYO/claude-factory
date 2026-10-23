@@ -3,6 +3,6 @@
     "owner": "CHANGE-ME",
     "number": 0,
     "repo": "CHANGE-ME/CHANGE-ME",
-    "statuses": { "ready": "Ready", "working": "In progress", "human": "Needs human", "done": "Done" }
+    "statuses": { "ready": "Ready", "working": "In progress", "review": "In review", "human": "Needs human", "done": "Done" }
   }
 }
